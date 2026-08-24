@@ -124,13 +124,8 @@ public class ReportService {
                         )
                 );
 
-        // Only VOLUNTEER accounts can be assigned
-        if (volunteer.getRole() != Role.VOLUNTEER) {
-
-            throw new RuntimeException(
-                    "Selected user is not a volunteer"
-            );
-        }
+        // Allow any user to volunteer (CITIZEN or VOLUNTEER)
+        // Role check removed as per requirements so the same account can serve.
 
         // Only pending reports can be assigned
         if (report.getStatus() != ReportStatus.PENDING) {
@@ -314,21 +309,32 @@ public class ReportService {
 
         // Award points
         User reporter = report.getReporter();
+        User volunteer = report.getVolunteer();
 
         int points = calculatePoints(
                 report.getSeverity()
         );
 
-        int currentPoints =
+        int currentReporterPoints =
                 reporter.getPoints() == null
                         ? 0
                         : reporter.getPoints();
 
         reporter.setPoints(
-                currentPoints + points
+                currentReporterPoints + points
         );
-
         userRepository.save(reporter);
+
+        if (volunteer != null) {
+            int currentVolunteerPoints =
+                    volunteer.getPoints() == null
+                            ? 0
+                            : volunteer.getPoints();
+            volunteer.setPoints(
+                    currentVolunteerPoints + points
+            );
+            userRepository.save(volunteer);
+        }
 
         // Mark verified
         report.setStatus(

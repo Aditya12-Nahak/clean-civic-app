@@ -18,7 +18,7 @@
 /* ── Constants ─────────────────────────────────────────────── */
 const API_BASE         = "http://localhost:8080";
 const INDIA_CENTER     = [20.5937, 78.9629];
-const DONE_STATUSES    = new Set(["CLEANUP_SUBMITTED","VERIFIED","RESOLVED"]);
+const DONE_STATUSES    = new Set(["VERIFIED","RESOLVED"]);
 const SEVERITY_POINTS  = { LOW: 10, MEDIUM: 20, HIGH: 30, CRITICAL: 50 };
 
 /* ── Global state ───────────────────────────────────────────── */
@@ -54,7 +54,7 @@ async function api(url, options = {}, isAuthEndpoint = false) {
   try {
     response = await fetch(url, { ...options, headers });
   } catch (networkErr) {
-    throw new Error("Cannot reach the backend. Make sure Spring Boot is running on port 8080.");
+    throw new Error("Unable to connect to the backend.");
   }
 
   // Read body safely
@@ -697,49 +697,41 @@ function switchAdminTab(tab) {
    Awarded to REPORTER (citizen). No /leaderboard endpoint yet, so we
    derive from allReports — this will auto-update once reports refresh.
    ═══════════════════════════════════════════════════════════ */
-function renderLeaderboard() {
+async function renderLeaderboard() {
   const grid = document.getElementById("leaderboardGrid");
   if (!grid) return;
 
-  // Build map: userId → { name, reports, cleanups, points }
-  const map2 = {};
-  allReports.forEach(r => {
-    if (!r.reporterId) return;
-    if (!map2[r.reporterId]) map2[r.reporterId] = { name: r.reporterName||`User #${r.reporterId}`, reports:0, cleanups:0, points:0 };
-    map2[r.reporterId].reports++;
-    // Points awarded when verified — use same logic as backend
-    if (r.status === "VERIFIED" || r.status === "RESOLVED") {
-      map2[r.reporterId].points += (SEVERITY_POINTS[r.severity] || 0);
-      map2[r.reporterId].cleanups++;
+  grid.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading leaderboard…</p></div>`;
+
+  try {
+    const data = await api(`${API_BASE}/api/users/leaderboard`);
+    const entries = Array.isArray(data) ? data : [];
+
+    if (!entries.length) {
+      grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🏆</div><div class="empty-state-title">No verified reports yet</div><div class="empty-state-sub">Once admin verifies a cleanup, points appear here automatically.</div></div>`;
+      return;
     }
-  });
 
-  const entries = Object.values(map2)
-    .sort((a,b) => b.points - a.points)
-    .slice(0, 20);
+    const medals = ["🥇","🥈","🥉"];
+    const highlightId = currentUser?.userId;
 
-  if (!entries.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🏆</div><div class="empty-state-title">No verified reports yet</div><div class="empty-state-sub">Once admin verifies a cleanup, points appear here automatically.</div></div>`;
-    return;
+    grid.innerHTML = entries.map((u, i) => {
+      const isMe = (u.id === highlightId);
+      return `
+        <div class="lb-row ${i < 3 ? "lb-top" : ""} ${isMe ? "lb-me" : ""}">
+          <span class="lb-rank">${medals[i] || `#${i+1}`}</span>
+          <span class="lb-name">${esc(u.name)}${isMe ? " <span class='lb-you'>(You)</span>" : ""} <span class="role-chip ${u.role}" style="margin-left: 8px; font-size: 8px">${u.role}</span></span>
+          <span class="lb-score">${u.points || 0} <small>pts</small></span>
+        </div>`;
+    }).join("");
+
+    const note = document.getElementById("lbNote");
+    if (note) note.innerHTML = `<span>Points are awarded by admin verification. Backend calculates: LOW=10 · MEDIUM=20 · HIGH=30 · CRITICAL=50 per cleanup.</span>`;
+  } catch (e) {
+    if (e.message !== "__SESSION_EXPIRED__") {
+      grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-title">Error loading</div><div class="empty-state-sub">${esc(e.message)}</div></div>`;
+    }
   }
-
-  const medals = ["🥇","🥈","🥉"];
-  const highlightId = currentUser?.userId;
-
-  grid.innerHTML = entries.map((u, i) => {
-    const isMe = (u.reporterId === highlightId);
-    return `
-      <div class="lb-row ${i < 3 ? "lb-top" : ""} ${isMe ? "lb-me" : ""}">
-        <span class="lb-rank">${medals[i] || `#${i+1}`}</span>
-        <span class="lb-name">${esc(u.name)}${isMe ? " <span class='lb-you'>(You)</span>" : ""}</span>
-        <span class="lb-stat" title="Reports submitted">📋 ${u.reports}</span>
-        <span class="lb-stat" title="Cleanups verified">🧹 ${u.cleanups}</span>
-        <span class="lb-score">${u.points} <small>pts</small></span>
-      </div>`;
-  }).join("");
-
-  const note = document.getElementById("lbNote");
-  if (note) note.innerHTML = `<span>Points are awarded by admin verification. Backend calculates: LOW=10 · MEDIUM=20 · HIGH=30 · CRITICAL=50 per cleanup.</span>`;
 }
 
 /* ═══════════════════════════════════════════════════════════
