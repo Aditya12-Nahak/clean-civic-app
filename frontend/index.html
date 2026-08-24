@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clean Civic — Report. Volunteer. Restore.</title>
+  <meta name="description" content="Clean Civic is a civic garbage reporting and cleanup platform. Report waste, volunteer for cleanups, and track progress on a live map." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===================== TOAST CONTAINER ===================== -->
+<div id="toastContainer" aria-live="polite"></div>
+
+<!-- ===================== AUTH OVERLAY ===================== -->
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-bg-anim">
+    <span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <div class="auth-panel">
+    <!-- Tabs -->
+    <div class="auth-tabs">
+      <button id="tabLogin"  class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+      <button id="tabSignup" class="auth-tab"        onclick="switchAuthTab('signup')">Sign Up</button>
+    </div>
+
+    <!-- Logo -->
+    <div class="auth-logo">
+      <div class="auth-logo-icon">🌿</div>
+      <h1 class="auth-logo-title">Clean Civic</h1>
+      <p class="auth-logo-sub">Report. Volunteer. Restore.</p>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <div id="loginForm" class="auth-form">
+      <div class="field-group">
+        <label for="loginEmail">Email Address</label>
+        <input id="loginEmail" type="email" class="field" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="field-group">
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" class="field" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div id="loginError" class="auth-error hidden"></div>
+      <button id="doLoginBtn" class="btn-primary full" onclick="doLogin()">
+        <span class="btn-text">Sign In</span>
+        <span class="btn-spinner hidden"></span>
+      </button>
+      <p class="auth-switch">No account? <button onclick="switchAuthTab('signup')" class="link-btn">Create one →</button></p>
+    </div>
+
+    <!-- SIGNUP FORM -->
+    <div id="signupForm" class="auth-form hidden">
+      <div class="field-group">
+        <label for="signupName">Full Name</label>
+        <input id="signupName" type="text" class="field" placeholder="Aditya Nahak" autocomplete="name" />
+      </div>
+      <div class="field-group">
+        <label for="signupEmail">Email Address</label>
+        <input id="signupEmail" type="email" class="field" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="field-group">
+        <label for="signupPassword">Password</label>
+        <input id="signupPassword" type="password" class="field" placeholder="••••••••" autocomplete="new-password" />
+      </div>
+      <p class="auth-note">🌱 New accounts are registered as <strong>Citizen</strong>. Admins can upgrade to Volunteer.</p>
+      <div id="signupError" class="auth-error hidden"></div>
+      <button id="doSignupBtn" class="btn-primary full" onclick="doSignup()">
+        <span class="btn-text">Create Account</span>
+        <span class="btn-spinner hidden"></span>
+      </button>
+      <p class="auth-switch">Have an account? <button onclick="switchAuthTab('login')" class="link-btn">Sign in →</button></p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== APP SHELL ===================== -->
+<div id="appShell" class="app-shell hidden">
+
+  <!-- TOP NAV -->
+  <nav class="topnav">
+    <div class="topnav-left">
+      <div class="nav-logo">
+        <span class="nav-logo-icon">🌿</span>
+        <span class="nav-logo-text">Clean<span class="accent">Civic</span></span>
+      </div>
+      <div class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="map"         onclick="switchTab('map')">🗺️ Map</button>
+        <button class="nav-tab"        data-tab="reports"     onclick="switchTab('reports')" id="navReports">📋 Reports</button>
+        <button class="nav-tab"        data-tab="dashboard"   onclick="switchTab('dashboard')" id="navDashboard">⚡ My Reports</button>
+        <button class="nav-tab"        data-tab="leaderboard" onclick="switchTab('leaderboard')" id="navLeaderboard">🏆 Leaderboard</button>
+      </div>
+    </div>
+    <div class="topnav-right">
+      <!-- Volunteer mode toggle — only for CITIZEN/VOLUNTEER roles -->
+      <button id="volunteerModeBtn" class="btn-vol-toggle hidden" onclick="toggleVolunteerMode()" title="Switch between citizen and volunteer mode">
+        🤝 Serve as Volunteer
+      </button>
+      <div class="user-chip" id="userChip">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <div class="user-info">
+          <span class="user-name"  id="userNameDisplay">User</span>
+          <span class="role-chip"  id="roleChipDisplay">CITIZEN</span>
+        </div>
+      </div>
+      <button class="btn-ghost" id="logoutBtn" onclick="doLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-item"           id="statTotal">     <span class="stat-num">0</span><span class="stat-label">Total</span></div>
+    <div class="stat-item pending-stat"   id="statPending">   <span class="stat-num">0</span><span class="stat-label">Pending</span></div>
+    <div class="stat-item assigned-stat"  id="statAssigned">  <span class="stat-num">0</span><span class="stat-label">Assigned</span></div>
+    <div class="stat-item inprogress-stat" id="statInProgress"><span class="stat-num">0</span><span class="stat-label">In Progress</span></div>
+    <div class="stat-item submitted-stat" id="statSubmitted">  <span class="stat-num">0</span><span class="stat-label">Awaiting</span></div>
+    <div class="stat-item resolved-stat"  id="statResolved">   <span class="stat-num">0</span><span class="stat-label">Resolved</span></div>
+  </div>
+
+  <!-- CONTENT AREA -->
+  <main class="content-area">
+
+    <!-- ====== MAP TAB ====== -->
+    <section id="tabMap" class="tab-section active">
+      <div class="map-wrapper">
+        <div id="map"></div>
+
+        <!-- Map floating controls -->
+        <div class="map-fab-group">
+          <button class="fab" id="fabReport" onclick="openCreateReportModal(null, null)" title="Report Garbage">
+            <span class="fab-icon">🗑️</span>
+            <span class="fab-label">Report Garbage</span>
+          </button>
+          <button class="fab fab-sm" id="fabLocation" onclick="useCurrentLocation()" title="My Location">📍</button>
+        </div>
+
+        <div class="map-hint" id="mapHint">
+          <span>🖱️</span> Click the map to report garbage · Click a marker to view details
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== REPORTS TAB ====== -->
+    <section id="tabReports" class="tab-section hidden">
+      <div class="tab-header">
+        <h2 class="tab-title" id="reportsTabTitle">All Reports</h2>
+      </div>
+
+      <!-- Search bar -->
+      <div class="search-row">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input id="reportSearch" type="text" class="field search-field" placeholder="Search by title, address or reporter name…" />
+        </div>
+      </div>
+
+      <!-- Status filter chips -->
+      <div class="filter-chips" id="reportFilterChips">
+        <button class="chip active" data-filter="all"              onclick="filterReports('all')">All</button>
+        <button class="chip"        data-filter="PENDING"          onclick="filterReports('PENDING')">Pending</button>
+        <button class="chip"        data-filter="ASSIGNED"         onclick="filterReports('ASSIGNED')">Assigned</button>
+        <button class="chip"        data-filter="IN_PROGRESS"      onclick="filterReports('IN_PROGRESS')">In Progress</button>
+        <button class="chip"        data-filter="CLEANUP_SUBMITTED" onclick="filterReports('CLEANUP_SUBMITTED')">Awaiting</button>
+        <button class="chip"        data-filter="VERIFIED"         onclick="filterReports('VERIFIED')">Verified</button>
+        <button class="chip"        data-filter="RESOLVED"         onclick="filterReports('RESOLVED')">Resolved</button>
+      </div>
+
+      <!-- Severity filter chips -->
+      <div class="filter-chips sev-chips" id="severityFilterChips">
+        <button class="chip active" data-sev="all"    onclick="filterSeverity('all')">All Severity</button>
+        <button class="chip sev-HIGH"   data-sev="HIGH"   onclick="filterSeverity('HIGH')">🔴 High</button>
+        <button class="chip sev-MEDIUM" data-sev="MEDIUM" onclick="filterSeverity('MEDIUM')">🟡 Medium</button>
+        <button class="chip sev-LOW"    data-sev="LOW"    onclick="filterSeverity('LOW')">🟢 Low</button>
+      </div>
+
+      <div class="reports-grid" id="reportsGrid">
+        <div class="loading-state"><div class="spinner"></div><p>Loading reports…</p></div>
+      </div>
+    </section>
+
+    <!-- ====== DASHBOARD TAB ====== -->
+    <section id="tabDashboard" class="tab-section hidden">
+
+      <!-- CITIZEN DASHBOARD -->
+      <div id="citizenDashboard" class="dashboard-panel hidden">
+        <div class="tab-header">
+          <h2 class="tab-title">My Reports</h2>
+          <button class="btn-primary sm" onclick="openCreateReportModal(null, null)">+ Report Garbage</button>
+        </div>
+        <div class="reports-grid" id="myReportsGrid">
+          <div class="loading-state"><div class="spinner"></div><p>Loading your reports…</p></div>
+        </div>
+      </div>
+
+      <!-- VOLUNTEER DASHBOARD -->
+      <div id="volunteerDashboard" class="dashboard-panel hidden">
+        <div class="tab-header">
+          <h2 class="tab-title">🧹 Volunteer Tasks</h2>
+          <div class="subtitle-text">Available & assigned cleanup reports</div>
+        </div>
+        <div class="reports-grid" id="volunteerTasksGrid">
+          <div class="loading-state"><div class="spinner"></div><p>Loading tasks…</p></div>
+        </div>
+      </div>
+
+      <!-- ADMIN DASHBOARD -->
+      <div id="adminDashboard" class="dashboard-panel hidden">
+        <div class="tab-header">
+          <h2 class="tab-title">⚡ Admin Control Panel</h2>
+        </div>
+
+        <!-- Admin stat cards -->
+        <div class="admin-stats" id="adminStats"><!-- Filled by JS --></div>
+
+        <!-- Admin sub-tabs -->
+        <div class="admin-subtabs">
+          <button class="admin-tab active" data-admin-tab="pending"   onclick="switchAdminTab('pending')">🕐 Pending</button>
+          <button class="admin-tab"        data-admin-tab="submitted" onclick="switchAdminTab('submitted')">🔍 Verify Cleanup</button>
+          <button class="admin-tab"        data-admin-tab="all"       onclick="switchAdminTab('all')">📋 All Reports</button>
+        </div>
+
+        <div id="adminPendingSection"   class="admin-section">
+          <div class="reports-grid" id="adminPendingGrid"><div class="loading-state"><div class="spinner"></div><p>Loading…</p></div></div>
+        </div>
+        <div id="adminSubmittedSection" class="admin-section hidden">
+          <div class="reports-grid" id="adminSubmittedGrid"><div class="loading-state"><div class="spinner"></div><p>Loading…</p></div></div>
+        </div>
+        <div id="adminAllSection"       class="admin-section hidden">
+          <div class="reports-grid" id="adminAllGrid"><div class="loading-state"><div class="spinner"></div><p>Loading…</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== LEADERBOARD TAB ====== -->
+    <section id="tabLeaderboard" class="tab-section hidden">
+      <div class="tab-header">
+        <h2 class="tab-title">🏆 Clean Civic Leaderboard</h2>
+        <div class="subtitle-text">Points awarded when admin verifies a cleanup</div>
+      </div>
+
+      <!-- Points legend -->
+      <div class="points-legend">
+        <span class="points-badge low">🟢 LOW = 10 pts</span>
+        <span class="points-badge medium">🟡 MEDIUM = 20 pts</span>
+        <span class="points-badge high">🔴 HIGH = 30 pts</span>
+        <span class="points-badge critical">⚡ CRITICAL = 50 pts</span>
+      </div>
+
+      <div id="leaderboardGrid" class="leaderboard-grid">
+        <div class="loading-state"><div class="spinner"></div><p>Loading leaderboard…</p></div>
+      </div>
+      <div id="lbNote" class="lb-note"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===================== REPORT CREATION MODAL ===================== -->
+<div id="createReportModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Create Garbage Report">
+  <div class="modal-backdrop" onclick="closeCreateReportModal()"></div>
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3 class="modal-title">🗑️ Report Garbage</h3>
+      <button class="modal-close-btn" onclick="closeCreateReportModal()" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Location info -->
+      <div class="location-summary" id="locationSummary">
+        <div class="location-icon">📍</div>
+        <div class="location-details">
+          <div class="location-address" id="modalAddress">Detecting location…</div>
+          <div class="location-coords"  id="modalCoords"></div>
+        </div>
+        <button class="btn-ghost sm" onclick="useCurrentLocationForModal()">📍 Use My Location</button>
+      </div>
+
+      <div class="form-row">
+        <div class="field-group">
+          <label for="rTitle">Title <span class="required">*</span></label>
+          <input id="rTitle" type="text" class="field" maxlength="150" placeholder="Garbage near main road" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="field-group">
+          <label for="rDescription">Description</label>
+          <textarea id="rDescription" class="field" rows="3" maxlength="1000" placeholder="Describe the garbage problem…"></textarea>
+        </div>
+      </div>
+
+      <div class="form-row two-col">
+        <div class="field-group">
+          <label for="rCategory">Category <span class="required">*</span></label>
+          <select id="rCategory" class="field">
+            <option value="PLASTIC">♻️ Plastic</option>
+            <option value="MIXED_WASTE">🗑️ Mixed Waste</option>
+            <option value="HOUSEHOLD">🏠 Household</option>
+            <option value="ORGANIC">🌿 Organic</option>
+            <option value="E_WASTE">💻 E-Waste</option>
+            <option value="CONSTRUCTION">🏗️ Construction</option>
+            <option value="OTHER">📦 Other</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="rSeverity">Severity <span class="required">*</span></label>
+          <select id="rSeverity" class="field severity-select severity-HIGH" onchange="updateSeverityStyle(this)">
+            <option value="LOW">🟢 Low</option>
+            <option value="MEDIUM">🟡 Medium</option>
+            <option value="HIGH" selected>🔴 High</option>
+            <option value="CRITICAL">⚡ Critical</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Before image -->
+      <div class="field-group">
+        <label for="rBeforeImage">Before Image <span class="required">*</span></label>
+        <div class="image-upload-area" id="beforeUploadArea" onclick="document.getElementById('rBeforeImage').click()">
+          <div class="upload-placeholder" id="beforeUploadPlaceholder">
+            <div class="upload-icon">📷</div>
+            <div class="upload-text">Click to select image</div>
+            <div class="upload-hint">JPG, PNG, WEBP · Max 5 MB</div>
+          </div>
+          <img id="beforePreview" class="upload-preview hidden" alt="Before image preview" />
+        </div>
+        <input id="rBeforeImage" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" />
+        <div id="beforeImageError" class="field-error hidden"></div>
+      </div>
+
+      <div id="createReportError" class="auth-error hidden"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeCreateReportModal()">Cancel</button>
+      <button class="btn-primary" id="submitReportBtn" onclick="submitReport()">
+        <span class="btn-text">Submit Report</span>
+        <span class="btn-spinner hidden"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== REPORT DETAIL MODAL ===================== -->
+<div id="reportDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Report Details">
+  <div class="modal-backdrop" onclick="closeReportDetailModal()"></div>
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3 class="modal-title" id="detailTitle">Report Details</h3>
+      <button class="modal-close-btn" onclick="closeReportDetailModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody"><!-- Filled dynamically --></div>
+    <div class="modal-footer" id="detailFooter">
+      <button class="btn-ghost" onclick="closeReportDetailModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== AFTER IMAGE UPLOAD MODAL ===================== -->
+<div id="afterImageModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Upload After Image">
+  <div class="modal-backdrop" onclick="closeAfterImageModal()"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 class="modal-title">📸 Upload After-Cleanup Image</h3>
+      <button class="modal-close-btn" onclick="closeAfterImageModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="auth-note">Great work! Upload a photo showing the cleaned location.</p>
+      <div class="image-upload-area" onclick="document.getElementById('rAfterImage').click()">
+        <div class="upload-placeholder" id="afterUploadPlaceholder">
+          <div class="upload-icon">📷</div>
+          <div class="upload-text">Click to select after-cleanup image</div>
+          <div class="upload-hint">JPG, PNG, WEBP · Max 5 MB</div>
+        </div>
+        <img id="afterPreview" class="upload-preview hidden" alt="After image preview" />
+      </div>
+      <input id="rAfterImage" type="file" accept=".jpg,.jpeg,.png,.webp" class="hidden" />
+      <div id="afterImageError" class="field-error hidden"></div>
+      <input type="hidden" id="afterImageReportId" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeAfterImageModal()">Cancel</button>
+      <button class="btn-primary" id="submitAfterBtn" onclick="submitAfterImage()">
+        <span class="btn-text">Submit Cleanup</span>
+        <span class="btn-spinner hidden"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
